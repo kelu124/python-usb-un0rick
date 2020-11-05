@@ -1,3 +1,3 @@
-from csr_map import CsrMap
-from fpga_ctrl import FpgaControl
-from ftdi_dev import FtdiDevice
+from un0usb.csr_map import CsrMap
+from un0usb.fpga_ctrl import FpgaControl, Acquisition
+from un0usb.ftdi_dev import FtdiDevice

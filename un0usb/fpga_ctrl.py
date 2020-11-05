@@ -2,9 +2,12 @@
 Main FPGA control script
 '''
 
+import numpy as np
+import datetime
+
 from time import sleep
-from csr_map import CsrMap
-from ftdi_dev import FtdiDevice
+from un0usb.csr_map import CsrMap
+from un0usb.ftdi_dev import FtdiDevice
 
 class FpgaControl(object):
     """Collection of FPGA control functions via FTDI API"""
@@ -48,6 +51,25 @@ class FpgaControl(object):
             res += [line]
         return res
 
+    def set_pulseform(self, initDelay=5, POn=16, PInter=16, Poff=5000):
+        """Set pulser.
+        
+        Keyword arguments:
+          initDelay -- ncycles before acquisition starts
+          POn -- width of the pulse
+          PInter -- time between Pon and PDamp
+          Poff -- damping period
+        """
+        if initDelay:
+            self.csr.initdel= initDelay
+        if POn:
+            self.csr.ponw = POn
+        if PInter:
+            self.csr.interw = PInter
+        if Poff:
+            self.csr.poffw = Poff
+
+
     def do_acquisition(self, acq_lines=1, gain=None, double_rate=False):
         """Do acquisitions.
         
@@ -68,6 +90,70 @@ class FpgaControl(object):
     def disconnect(self):
         """Disconnect from FTDI and close all open ports"""
         self._ftdi.close_connection()
+
+    def line_to_voltage(self, line):
+        SAMPLE_W = 10
+        SAMPLE_N = 2 ** SAMPLE_W
+        res = [((2 * 1.0) / SAMPLE_N) * ((w & (SAMPLE_N - 1)) - SAMPLE_N // 2) for w in line]
+        return np.array(res)
+
+    def rawAcq(self, acq_res):
+        allAcqs = []
+        for k in range(len(acq_res)):
+            allAcqs.append( self.line_to_voltage(acq_res[k]) )
+        
+        t = [x*256.0/len(acq_res[0]) for x in range(len(acq_res[0]))]
+        
+        today = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
+
+        np.savez_compressed(today, signal=allAcqs, t=t, 
+                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
+                            dac = self.csr.dacout,
+                            t_inter = self.csr.interw,
+                            t_off = self.csr.poffw,
+                            t_delay = self.csr.initdel,
+                            author = self.csr.author,
+                            version = self.csr.version,
+                            doublerate = self.csr.drmode,
+                            timestamp = today )
+
+        return allAcqs, t
+
+    def stdAcqDR(self, acq_res):
+
+        line0 = self.line_to_voltage(acq_res[0])
+        line1 = self.line_to_voltage(acq_res[1])
+        
+        for k in range(32//2 - 1):
+            line0 = line0 + self.line_to_voltage(acq_res[2*(k+1)  ])
+            line1 = line1 + self.line_to_voltage(acq_res[2*(k+1)+1])
+
+        signal = []
+        for k in range(len(line0)):
+            signal.append(line0[k])
+            signal.append(line1[k])
+            
+        signal = np.array(signal)/16.0
+        t = [x*256.0/len(signal) for x in range(len(signal))]
+        
+        today = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
+
+        np.savez_compressed(today, signal=signal, t=t, 
+                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
+                            dac = self.csr.dacout,
+                            t_inter = self.csr.interw,
+                            t_off = self.csr.poffw,
+                            t_delay = self.csr.initdel,
+                            author = self.csr.author,
+                            version = self.csr.version,
+                            doublerate = self.csr.drmode,
+                            timestamp = today )
+
+        return signal, t
+
+class Acquisition(object):
+    def empty():
+        return False
 
 if __name__ == "__main__":
     # init FTDI device
