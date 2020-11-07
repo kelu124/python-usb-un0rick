@@ -97,6 +97,32 @@ class FpgaControl(object):
         res = [((2 * 1.0) / SAMPLE_N) * ((w & (SAMPLE_N - 1)) - SAMPLE_N // 2) for w in line]
         return np.array(res)
 
+    def save(self, nameFile = None):
+        """Saving acquisition"""
+        acq_res = self.read_lines( self.csr.nblines )
+        allAcqs = []
+        for k in range(len(acq_res)):
+            allAcqs.append( self.line_to_voltage(acq_res[k]) )
+        
+        t = [x*256.0/len(acq_res[0]) for x in range(len(acq_res[0]))]
+
+        now = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
+        if nameFile:
+            nameFile = now
+
+        np.savez_compressed(nameFile, signal=allAcqs, t=t, nblines=int(self.csr.nblines+1), 
+                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
+                            dac = self.csr.dacout,
+                            t_inter = self.csr.interw,
+                            t_off = self.csr.poffw,
+                            t_delay = self.csr.initdel,
+                            author = self.csr.author,
+                            version = self.csr.version,
+                            doublerate = self.csr.drmode,
+                            timestamp = now )
+
+        return nameFile+".npz"
+
     def rawAcq(self, acq_res):
         allAcqs = []
         for k in range(len(acq_res)):
