@@ -8,6 +8,7 @@ import datetime
 from time import sleep
 from un0usb.csr_map import CsrMap
 from un0usb.ftdi_dev import FtdiDevice
+from .version import __version__
 
 class FpgaControl(object):
     """Collection of FPGA control functions via FTDI API"""
@@ -53,7 +54,15 @@ class FpgaControl(object):
 
     def set_pulseform(self, initDelay=5, POn=16, PInter=16, Poff=5000):
         """Set pulser.
-        
+        8 ~ 42ns
+        16 ~ 167ns
+        25 ~ 208ns
+        32 ~ 250ns
+        50 units ~ 420ns
+        100 ~ 794ns
+        250 ~  1.5us
+        1000 ~ 1833ns
+        2500 ~ 1.5us
         Keyword arguments:
           initDelay -- ncycles before acquisition starts
           POn -- width of the pulse
@@ -69,6 +78,12 @@ class FpgaControl(object):
         if Poff:
             self.csr.poffw = Poff
 
+    def stdNDTacq(self):
+        """Do standard acquisition - 32lines, interleaved, standard gain.
+        """
+        self.do_acquisition(acq_lines=32, gain=None, double_rate=True)
+        now = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
+        return self.save(nameFile = now+"_ndt")
 
     def do_acquisition(self, acq_lines=1, gain=None, double_rate=False):
         """Do acquisitions.
@@ -79,6 +94,9 @@ class FpgaControl(object):
           double_rate -- enable/disable interleaving mode: bool
         """
         if gain:
+            self.csr.dacgain = gain
+        else:
+            gain = [int(100 + ((1000-100)*x*x*x/32/32/32)) for x in range(32)]
             self.csr.dacgain = gain
         self.csr.nblines = acq_lines - 1
         self.csr.drmode = int(double_rate)
@@ -92,14 +110,15 @@ class FpgaControl(object):
         self._ftdi.close_connection()
 
     def line_to_voltage(self, line):
+        """Extracting voltage reading from line raw data"""
         SAMPLE_W = 10
         SAMPLE_N = 2 ** SAMPLE_W
         res = [((2 * 1.0) / SAMPLE_N) * ((w & (SAMPLE_N - 1)) - SAMPLE_N // 2) for w in line]
         return np.array(res)
 
     def save(self, nameFile = None):
-        """Saving acquisition"""
-        acq_res = self.read_lines( self.csr.nblines )
+        """Saving acquisition in npz"""
+        acq_res = self.read_lines( self.csr.nblines + 1 )
         allAcqs = []
         for k in range(len(acq_res)):
             allAcqs.append( self.line_to_voltage(acq_res[k]) )
@@ -119,63 +138,12 @@ class FpgaControl(object):
                             author = self.csr.author,
                             version = self.csr.version,
                             doublerate = self.csr.drmode,
-                            timestamp = now )
+                            libversion = str(__version__),
+                            timestamp = str(now),
+                            nameFile = str(nameFile) )
 
         return nameFile+".npz"
 
-    def rawAcq(self, acq_res):
-        allAcqs = []
-        for k in range(len(acq_res)):
-            allAcqs.append( self.line_to_voltage(acq_res[k]) )
-        
-        t = [x*256.0/len(acq_res[0]) for x in range(len(acq_res[0]))]
-        
-        today = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
-
-        np.savez_compressed(today, signal=allAcqs, t=t, 
-                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
-                            dac = self.csr.dacout,
-                            t_inter = self.csr.interw,
-                            t_off = self.csr.poffw,
-                            t_delay = self.csr.initdel,
-                            author = self.csr.author,
-                            version = self.csr.version,
-                            doublerate = self.csr.drmode,
-                            timestamp = today )
-
-        return allAcqs, t
-
-    def stdAcqDR(self, acq_res):
-
-        line0 = self.line_to_voltage(acq_res[0])
-        line1 = self.line_to_voltage(acq_res[1])
-        
-        for k in range(32//2 - 1):
-            line0 = line0 + self.line_to_voltage(acq_res[2*(k+1)  ])
-            line1 = line1 + self.line_to_voltage(acq_res[2*(k+1)+1])
-
-        signal = []
-        for k in range(len(line0)):
-            signal.append(line0[k])
-            signal.append(line1[k])
-            
-        signal = np.array(signal)/16.0
-        t = [x*256.0/len(signal) for x in range(len(signal))]
-        
-        today = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
-
-        np.savez_compressed(today, signal=signal, t=t, 
-                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
-                            dac = self.csr.dacout,
-                            t_inter = self.csr.interw,
-                            t_off = self.csr.poffw,
-                            t_delay = self.csr.initdel,
-                            author = self.csr.author,
-                            version = self.csr.version,
-                            doublerate = self.csr.drmode,
-                            timestamp = today )
-
-        return signal, t
 
 class Acquisition(object):
     def empty():

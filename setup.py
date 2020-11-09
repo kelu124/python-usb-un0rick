@@ -1,4 +1,5 @@
-from distutils.core import setup
+#from distutils.core import setup
+from setuptools import setup
 #import glob, os, re, sys
 #import setuptools; setuptools.bootstrap_install_from = egg
 #from setuptools import Extension, find_packages, setup

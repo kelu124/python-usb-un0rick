@@ -1,0 +1,111 @@
+<p>[![ko-fi](<a href="https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G81MT0G" rel="nofollow">https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G81MT0G</a>)</p>
+<p># How to setup the board using only a usb cable</p>
+<p># Beware! If you use this, you just need to have a usb cable plugged in.</p>
+<p>Install jumpers and connectors as indicated in the figure below. Jumpers necessary are the white and the green ones.</p>
+<p>![](<a href="https://raw.githubusercontent.com/kelu124/echomods/master/include/community/Abdulrhman/unnamed.jpg" rel="nofollow">https://raw.githubusercontent.com/kelu124/echomods/master/include/community/Abdulrhman/unnamed.jpg</a>)</p>
+<p># Installation</p>
+<p>## Preparing Python</p>
+<p><cite>pip3 install pyftdi matplotlib numpy scipy</cite></p>
+<p>## Installing iceprog to flash the fpga</p>
+<p>iceprog is the software used to put the fpga on the flash storage on the board, which will be read by the fpga on boot. The easiest way is to :</p>
+<p><cite>sudo apt install fpga-icestorm</cite></p>
+<p>If this doesn’t work, then this may work:</p>
+<p><tt>`
+sudo <span class="pre">apt-get</span> install <span class="pre">libftdi-dev</span> git gcc
+git clone <span class="pre">https://github.com/cliffordwolf/icestorm.git</span>
+cd iceprog
+make
+sudo make install
+`</tt></p>
+<p>This will create and install the iceprog utility, used to flash the fpga program (bitstream).</p>
+<p>## FTDI rules.</p>
+<p><em>Notes for Linux</em>: Create a file /etc/udev/rules.d/53-lattice-ftdi.rules with the following line in it to allow uploading bit-streams as unprivileged user:</p>
+<p><cite>ATTRS{idVendor}==”0403”, ATTRS{idProduct}==”6014”, MODE=”0660”, GROUP=”plugdev”, TAG+=”uaccess”</cite></p>
+<p>This should solve usb access rules.</p>
+<p>## Board specific install files</p>
+<p>Download the [install pack](<a href="https://github.com/kelu124/un0rick/blob/master/usb/install_pack.zip" rel="nofollow">https://github.com/kelu124/un0rick/blob/master/usb/install_pack.zip</a>) or by</p>
+<p><cite>wget https://github.com/kelu124/un0rick/raw/master/usb/install_pack.zip</cite></p>
+<p>## Connect the usb cable</p>
+<p>Check that the FTDI device is well created by typing:</p>
+<p><cite>dmesg</cite></p>
+<p># Programming it</p>
+<p>Unzip it, inside, there’s the bin to program the fpga :</p>
+<p><cite>iceprog usb.bin</cite></p>
+<p># Running python</p>
+<p>## Test</p>
+<p>There is a test bench for the python lib matching the usb firmware, from the <cite>brodie</cite> package. Installation is as follows.</p>
+<p><tt>`
+mkdir experiment
+cd experiment
+wget <span class="pre">https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201026a/brodie.zip</span>
+iceprog un0rick_ms3_icestorm.bin
+cd fpga_ctrl/
+python3 test.py
+`</tt></p>
+<p>which will run a series of acqs and produce a series of images from this acquisition.</p>
+<p>## Using the python lib</p>
+<p>### Imports</p>
+<p>In the fpga_ctrl folder, you’ll need the <cite>csr_map</cite>, <cite>ftdi_dev.py</cite>, and <cite>fpga_ctrl</cite> files, to import the lib:</p>
+<p><cite>from fpga_ctrl import FpgaControl</cite></p>
+<p>I encourage the reader to go inside this libs, which are already documented.</p>
+<p>### Create the device</p>
+<p>then connect to the FPGA</p>
+<p><tt>`python
+# init FTDI device
+fpga = <span class="pre">FpgaControl('ftdi://ftdi:2232:/',</span> spi_freq=8E6)
+# reload configuration (optional step - just to fill BRAM (DACGAIN registers) with initial values)
+fpga.reload()
+# reset fpga
+fpga.reset()
+`</tt></p>
+<p>### Pulser control</p>
+<p>To control the waveform, one would set the <cite>fpga.csr.ponw</cite>, <cite>fpga.csr.interw</cite> and <cite>fpga.csr.poffw</cite>, that are respectively integers for setting the width (timing) of the pulse, width of a relaxation period before damping, and then duration of damping. Unit are (1/128us).</p>
+<p>The <cite>fpga.csr.initdel</cite> register is the delay between the beginning of the acquisiton and the pulse.</p>
+<p><tt>`
+fpga.csr.initdel = InitDel
+fpga.csr.ponw = PONWidth
+fpga.csr.interw = INTERWidth
+fpga.csr.poffw = PDAMP
+`</tt></p>
+<p>Below is plotted amplitude of an echo as a function of the <cite>fpga.csr.ponw</cite> for a 4MHz transducer. One sees that a setting at <cite>16</cite> provides most</p>
+<p>![](<a href="https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201031a/amplitude.png" rel="nofollow">https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201031a/amplitude.png</a>)</p>
+<p>(See [full experiment here](<a href="https://github.com/kelu124/echomods/tree/master/matty/20201031a" rel="nofollow">https://github.com/kelu124/echomods/tree/master/matty/20201031a</a>)).</p>
+<p>### Gain and acquisitions</p>
+<p>And do acquisitions with <cite>acq_res = fpga.do_acquisition(acq_lines=32, gain=gain, double_rate=True)</cite> which will return an array of <cite>acq_lines</cite> acquisitions, of length 256us at 64Msps.
+<cite>double_rate=True</cite> provides a half clock offset to odd lines, so that one can interleave two subsequent acquisition to have, in a fixed setting, a 128Msps acquisition.</p>
+<p>The <cite>gain</cite> setting is an array of integers, of length 32, that can range from 0 to 1023, controlling gain for each of the 32 8us-segment of acquisition within the 256us line.</p>
+<p>### Other registers</p>
+<ul>
+<li><cite>fpga.csr.led3 = 0</cite> sets LED3 off. led1, led2, led3 are possible, can be set to 0 or 1.</li>
+<li><cite>fpga.csr.topturnX</cite> reads input 1 to 3 on the input header.</li>
+<li><cite>fpga.csr.jumperX</cite> reads jumper 1 to 3 close to the programming jumper.</li>
+<li><cite>fpga.csr.outXice</cite> writes/reads output 1 to 3.</li>
+<li><cite>fpga.csr.nblines = acq_lines - 1</cite> is the register controlling the number of lines acquired.</li>
+<li><cite>fpga.csr.dacout</cite> reads the DAC/TGC/VGA level outside of acquisitions.</li>
+<li><cite>fpga.csr.acqstart = 1</cite> to start the acquisition</li>
+<li><cite>fpga.csr.drmode = int(double_rate)</cite> triggers the interleaving mode.</li>
+<li><cite>fpga.csr.acqstart = 1</cite> to start the acquisition</li>
+<li><cite>fpga.csr.acqdone</cite> is equal to 0 during acquisitions.</li>
+<li><cite>fpga.csr.author</cite> reads the ID of the author of the binary.</li>
+<li><cite>fpga.csr.version</cite> reads the ID of the author’s binary.</li>
+</ul>
+<p># Example of acquisitons</p>
+<p>## Raw signal, with DAC</p>
+<p>The signal is in blue, the gain levels are in green. Here there are 32 visible steps, of 8us each.
+![](<a href="https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201103a/Acq%200.png" rel="nofollow">https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201103a/Acq%200.png</a>)</p>
+<p>## Detail of an echo</p>
+<p>![](<a href="https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201026a/fpga_ctrl/img/4.png" rel="nofollow">https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201026a/fpga_ctrl/img/4.png</a>)</p>
+<p>## Interleaved acquisiton mode = ON</p>
+<p>Doublign acquisition speed (yellow and red dots below)</p>
+<p>![](<a href="https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201026a/fpga_ctrl/img/6.png" rel="nofollow">https://raw.githubusercontent.com/kelu124/echomods/master/matty/20201026a/fpga_ctrl/img/6.png</a>)</p>
+<p># License</p>
+<p>This work is based on two previous TAPR projects, [the echOmods project](<a href="https://github.com/kelu124/echomods/" rel="nofollow">https://github.com/kelu124/echomods/</a>), and the [un0rick project](<a href="https://github.com/kelu124/un0rick" rel="nofollow">https://github.com/kelu124/un0rick</a>) - its boards are open hardware and software, developped with open-source elements as much as possible.</p>
+<p>Copyright Kelu124 (<a href="mailto:kelu124&#37;&#52;&#48;gmail&#46;com">kelu124<span>&#64;</span>gmail<span>&#46;</span>com</a>) 2020.</p>
+<ul>
+<li>The hardware is licensed under TAPR Open Hardware License (www.tapr.org/OHL)</li>
+<li>The software components are free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.</li>
+<li>The documentation is licensed under a [Creative Commons Attribution-ShareAlike 3.0 Unported License](<a href="http://creativecommons.org/licenses/by-sa/3.0/" rel="nofollow">http://creativecommons.org/licenses/by-sa/3.0/</a>).</li>
+</ul>
+<p>## Disclaimer</p>
+<p>This project is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.</p>
+
