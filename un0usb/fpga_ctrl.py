@@ -83,7 +83,7 @@ class FpgaControl(object):
         """
         self.do_acquisition(acq_lines=32, gain=None, double_rate=True)
         now = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
-        return self.save(nameFile = now+"_ndt")
+        return self.save(name_file=now+"_ndt")
 
     def do_acquisition(self, acq_lines=1, gain=None, double_rate=False):
         """Do acquisitions.
@@ -116,34 +116,45 @@ class FpgaControl(object):
         res = [((2 * 1.0) / SAMPLE_N) * ((w & (SAMPLE_N - 1)) - SAMPLE_N // 2) for w in line]
         return np.array(res)
 
-    def save(self, nameFile = None):
-        """Saving acquisition in npz"""
-        acq_res = self.read_lines( self.csr.nblines + 1 )
-        allAcqs = []
-        for k in range(len(acq_res)):
-            allAcqs.append( self.line_to_voltage(acq_res[k]) )
-        
-        t = [x*256.0/len(acq_res[0]) for x in range(len(acq_res[0]))]
+    def get_data(self):
+        """
+        Return the last measurement datas into a dictionnary
+        """
+        acq_res = self.read_lines(self.csr.nblines + 1)
+        all_acqs = []
 
+        for _, acq in enumerate(acq_res):
+            all_acqs.append(self.line_to_voltage(acq))
+
+        t_axis = [x*256.0/len(acq_res[0]) for x in range(len(acq_res[0]))]
         now = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
-        if nameFile:
-            nameFile = now
+        data = {"signal": all_acqs,
+                "t": t_axis,
+                "nblines": int(self.csr.nblines+1),
+                "gain": self.csr.dacgain,
+                "t_on": self.csr.ponw, 
+                "dac": self.csr.dacout,
+                "t_inter": self.csr.interw,
+                "t_off": self.csr.poffw,
+                "t_delay": self.csr.initdel,
+                "author": self.csr.author,
+                "version": self.csr.version,
+                "doublerate": self.csr.drmode,
+                "libversion": str(__version__),
+                "timestamp": str(now),
+                "nameFile": None}
+        return data
 
-        np.savez_compressed(nameFile, signal=allAcqs, t=t, nblines=int(self.csr.nblines+1), 
-                            gain=self.csr.dacgain, t_on = self.csr.ponw, 
-                            dac = self.csr.dacout,
-                            t_inter = self.csr.interw,
-                            t_off = self.csr.poffw,
-                            t_delay = self.csr.initdel,
-                            author = self.csr.author,
-                            version = self.csr.version,
-                            doublerate = self.csr.drmode,
-                            libversion = str(__version__),
-                            timestamp = str(now),
-                            nameFile = str(nameFile) )
+    def save(self, name_file=None):
+        """Save just one acquisition in npz file format"""
+        data = self.get_data()
+        if name_file is None:
+            name_file = data["timestamp"]
 
-        return nameFile+".npz"
+        data["nameFile"] = str(name_file)
+        np.savez_compressed(name_file, **data )
 
+        return name_file+".npz"
 
 class Acquisition(object):
     def empty():
