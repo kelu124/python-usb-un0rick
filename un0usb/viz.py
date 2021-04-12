@@ -47,7 +47,7 @@ class FView(object):
         return data
 
 
-    def plotFirst(self,data):
+    def plotFirst(self,data, show=True, save=True):
  
         t = data["t"]
         t1 = data["t_delay"]
@@ -93,11 +93,17 @@ class FView(object):
 
         plt.suptitle(title)
         plt.tight_layout()
-        plt.savefig(str(data["nameFile"])+".jpg")
-        plt.show()
+        if save:
+            plt.savefig(str(data["nameFile"])+".jpg")
         
+        if show:
+            plt.show()
 
-    def plotNDT(self,data,fCentral=None,bandwidth=None):
+        plt.close()
+        plt.clf()
+
+    def plotNDT(self,data,fCentral=None,bandwidth=None,
+                show=True, save=True):
         if (data["nblines"]==32) & (data["doublerate"]==1):
 
             t1 = data["t_delay"]
@@ -183,8 +189,15 @@ class FView(object):
 
             plt.suptitle(title)
             plt.tight_layout()
-            plt.savefig(str(data["nameFile"])+"_ndt.jpg")
-            plt.show()
+
+            if save:
+                plt.savefig(str(data["nameFile"])+"_ndt.jpg")
+        
+            if show:
+                plt.show()
+            
+            plt.close()
+            plt.clf()
 
         else:
             print("Conditions - 32 lines & double rate - not met for this plot.")
