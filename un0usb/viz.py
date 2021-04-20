@@ -116,22 +116,18 @@ class FView(object):
             m = int(15000//64)
             Npts = self.SAMPLES_PER_LINE * 2
 
-            even = data["signal"][0]  
-            odd = data["signal"][1]  
-            for k in range(15):
-                even = even + data["signal"][2*(k+1)] 
-                odd = odd + data["signal"][2*(k+1)+1]
-                    
-            signal = []
-            for k in range(len(odd)):
-                signal.append(odd[k])
-                signal.append(even[k])
-                
+            # Interleave data, so create a new matrix, double the size
+            # of the original signal
+            signal = np.empty((len(data["signal"][0])*2,),
+                              dtype=data["signal"][0].dtype)
+
+            # Compute even and odd datas.
+            signal[0::2] = np.sum(data["signal"][::2], axis=0)/(data["nblines"]/2)
+            signal[1::2] = np.sum(data["signal"][1::2], axis=0)/(data["nblines"]/2)
 
             t = [T*63.75*4/len(signal) for T in range(len(signal))]
             f = [2*k*63.75/Npts for k in range(Npts)]
 
-            signal = [float(x/16.0) for x in signal]
             rawSignal = np.array(signal, copy=True)  
             FFT = np.abs(np.fft.fft(signal))
             if fCentral and bandwidth:
