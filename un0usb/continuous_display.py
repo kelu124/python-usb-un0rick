@@ -10,8 +10,8 @@
 """
 import argparse
 from . import fpga_ctrl as USB
-from .utils import cvplotter
-from .utils import signal_utils as sigutils
+from . import cvplotter
+from . import signal_utils as sigutils
 
 def init_un0rick(device='ftdi://ftdi:2232:/'):
     """ un0rick board initialisation """
